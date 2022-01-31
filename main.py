@@ -1,102 +1,74 @@
 import sys, json, time
+from datetime import timedelta, date
 from googletrans import Translator
 from PySide6 import QtWidgets, QtGui
+from PySide6.QtUiTools import QUiLoader
+from PySide6.QtCore import Slot
 import speech_recognition as sr     #głos na tekst
 import pyttsx3 as tts               #tekst na głos
 
 # ścieżki do plików z frazamia do modułu mówienia
 PATHS = 'frazy1.txt', 'frazy2.txt', 'frazy3.txt', 'frazy4.txt'
 
-class MenuWidget(QtWidgets.QWidget):
+class MenuWidget(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
+        # ustawienia początkowe programu
+        self.wybor = 'pl'  # ang>pol 
+          
+        # ładowanie głównego okna aplikacji z GUI
+        loader = QUiLoader()
+        self.window = loader.load("GUI/menu.ui", self)
+        
+        # ładowanie pliku temp do okna aplikacji
         temp = self._temp_load()
-        self.main_points = temp['main_points']
-        self.trial_number = temp['trial_number']
-        self.mówienie = temp['mówienie']
-        self.pisanie = temp['pisanie']
-        main_layout = self._initialize_layout()
-        self.setLayout(main_layout)
-        self.setWindowTitle("Angielka")
-        self.resize(240, 150)
+        sprawnosc = self._wylicz_sprawnosc(temp)
+        wizyta = self._kiedy_ostatnia_wizyta(temp['ostatnia_wizyta'])
+        self.window.mainPointsLCD.display(temp['main_points'])
+        self.window.trialNumberLCD.display(temp['trial_number'])
+        self.window.sprawnoscBar.setValue(sprawnosc)
+        self.window.wizytaLabel.setText(wizyta)
 
-    def _initialize_layout(self):    
-        # blok informacji
-        
-        if self.trial_number > 0: efficiency = self.main_points/self.trial_number*100 
-        else: efficiency = 0
-        
-        info_layout = QtWidgets.QVBoxLayout()
-        self.points_label = QtWidgets.QLabel(f'Zdobyte punkty: {self.main_points}')
-        self.points_label.setFont(QtGui.QFont('Sanserif', 14))
-        self.trial_number_label = QtWidgets.QLabel(f'Liczba prób: {self.trial_number}, w tym:\n   mówienie: {self.mówienie}\n   pisanie: {self.pisanie}')
-        self.trial_number_label.setFont(QtGui.QFont('Sanserif', 14))
-        self.efficiency_label = QtWidgets.QLabel(f'Twoja sprawność: {int(efficiency)}%')
-        self.efficiency_label.setFont(QtGui.QFont('Sanserif', 14))
-        info_layout.addWidget(self.points_label)
-        info_layout.addWidget(self.trial_number_label)
-        info_layout.addWidget(self.efficiency_label)
-        
-        # blok przycisków do wyboru mówienie/pisanie
-        head_layout = QtWidgets.QHBoxLayout()
-        head_group_box = QtWidgets.QGroupBox()
-        
-        self.b5 = QtWidgets.QRadioButton("mówienie")
-        self.b5.setChecked(True)
-        head_layout.addWidget(self.b5)
-            
-        self.b6 = QtWidgets.QRadioButton("pisanie")
-        head_layout.addWidget(self.b6)
-        head_group_box.setLayout(head_layout)
+        # przypisanie akcji do przycisków
+        self.window.jezykBtn.clicked.connect(self._wybierz_jezyk)
+        self.window.startBtn.clicked.connect(self._start)
+        self.window.tlumaczBtn.clicked.connect(self._translator)
+           
+        # uruchomienie okna
+        self.window.show()
 
-        # blok przycisków wyboru trybu tłumaczenia
-        top_layout = QtWidgets.QHBoxLayout()
-        top_group_box = QtWidgets.QGroupBox() #klasa która grupuje radiobuttony, tzn. może być tylko jeden zaznaczony w danej grupie
+    def _kiedy_ostatnia_wizyta(self, data):
+        # funkcja zwraca termin ostatniego uruchomienia aplikacji
+        timeStamp = date.fromisoformat(data)
+        ileMinelo = date.today()-timeStamp
+        if ileMinelo > timedelta(days=1):
+            return f'{ileMinelo.days} DNI TEMU'
+        elif ileMinelo == timedelta(days=1):
+            return 'WCZORAJ'
+        else:
+            return 'DZISIAJ'
 
-        self.b1 = QtWidgets.QRadioButton("ang-->pol")
-        self.b1.setChecked(True)
-        top_layout.addWidget(self.b1)
-            
-        self.b2 = QtWidgets.QRadioButton("pol-->ang")
-        top_layout.addWidget(self.b2)
-        top_group_box.setLayout(top_layout)
+    def _wylicz_sprawnosc(self, temp):
+        # funkcja zwraca sprawnosc oddawanych odpowiedzi
+        if temp['trial_number'] > 0: 
+            return temp['main_points']/temp['trial_number']*100 
+        else:
+            return 0
 
-        # blok przycisków wyboru ilości pytań
-        down_layout = QtWidgets.QHBoxLayout()
-        down_group_box = QtWidgets.QGroupBox()
-
-        self.b3 = QtWidgets.QRadioButton("10 pytań")
-        self.b3.setChecked(True)
-        down_layout.addWidget(self.b3)
-            
-        self.b4 = QtWidgets.QRadioButton("20 pytań")
-        down_layout.addWidget(self.b4)
-        down_group_box.setLayout(down_layout)
-
-        # klawisze
-        button_translate = QtWidgets.QPushButton('TŁUMACZ')
-        button_translate.setStyleSheet("background-color: yellow")
-        button_translate.setFont(QtGui.QFont('Arial', 10,))
-        button_translate.clicked.connect(self._translator)
-
-        button = QtWidgets.QPushButton('ZACZYNAMY')
-        button.setStyleSheet("background-color: green")
-        button.setFont(QtGui.QFont('Arial', 10,))
-        button.clicked.connect(self._start)
-
-        # tworzenie okna MENU
-        main_layout = QtWidgets.QVBoxLayout()
-        main_layout.addLayout(info_layout)
-        main_layout.addWidget(button_translate)
-        main_layout.addWidget(top_group_box)
-        main_layout.addWidget(head_group_box)
-        main_layout.addWidget(down_group_box)
-        main_layout.addWidget(button)
+    @Slot()
+    def _wybierz_jezyk(self):
+        if self.wybor == 'pl':
+            self.wybor = ''
+            self.window.jezykZ.setText('POL')
+            self.window.jezykNa.setText('ANG')
+        else:
+            self.wybor = 'pl'
+            self.window.jezykZ.setText('ANG')
+            self.window.jezykNa.setText('POL')
     
-        return main_layout
-
+    @Slot()
     def _translator(self):
-        if self.b1.isChecked():
+        if self.wybor == 'pl':
             wybor = 'pl'
         else:
             wybor = 'en'
@@ -110,39 +82,34 @@ class MenuWidget(QtWidgets.QWidget):
             with open("temp.json", encoding="utf-8") as json_file:
                 temp = json.load(json_file)
         except:
-            temp = {"main_points": 0, "trial_number": 0, "mówienie": 0, "pisanie": 0}
+            timeStamp = date.today().isoformat()
+            temp = {"main_points": 0, "trial_number": 0, "mówienie": 0, "pisanie": 0, "ostatnia_wizyta": timeStamp}
             with open("temp.json", 'w') as json_file:
                 json.dump(temp, json_file)
         return temp
 
-    def temp_save(self, points, liczba_pytan, tryb):
+    def temp_save(self, points, liczba_pytan):
         with open("temp.json", encoding="utf-8") as json_file:
             temp = json.load(json_file)
         
         temp['main_points'] += points
         temp['trial_number'] += liczba_pytan
-        if tryb:
+        if self.window.rBtnMowienie.isChecked():
             temp['mówienie'] += liczba_pytan
         else:
             temp['pisanie'] += liczba_pytan
-        
+        temp['ostatnia_wizyta'] = date.today().isoformat()
+
         a = temp['main_points']
         b = temp['trial_number']
-        c = temp['mówienie']
-        d = temp['pisanie']
-        efficiency = a/b*100
-        
-        menu.points_label.setText(f'Zdobyte punkty: {a}')
-        menu.points_label.repaint()
-        menu.trial_number_label.setText(f'Liczba prób: {b}, w tym:\n   mówienie: {c}\n   pisanie: {d}')
-        menu.trial_number_label.repaint()
-        menu.efficiency_label.setText(f'Twoja sprawność: {int(efficiency)}%')
-        menu.efficiency_label.repaint()
-        
+               
+        self.window.mainPointsLCD.display(a)
+        self.window.trialNumberLCD.display(b)
+        self.window.sprawnoscBar.setValue(a/b*100)
+                
         with open("temp.json", 'w') as json_file:
             json.dump(temp, json_file)
-        #print('zapisano temp')
-
+        
     def tasowanie_pytan(self):    
         #uruchomienie json
         with open("slownik.json", encoding="utf-8") as json_file:
@@ -161,6 +128,8 @@ class MenuWidget(QtWidgets.QWidget):
         return words
 
     def transform_list(self):
+        # funkcja przygotowuje liste wyrazów do przetłumaczenia zgodnie z wybraną liczbą pytań i językiem 
+        
         #lista z wyrazami do przetłumaczenia
         self.quest = []  
         for i, word in enumerate(self.words):
@@ -177,7 +146,8 @@ class MenuWidget(QtWidgets.QWidget):
                 break
         return self.quest, self.correctAnswer
 
-    def save_rate(self, words):  #zapisywanie danych "rate" do pliku słownika
+    def save_rate(self, words):  
+        #zapisywanie danych "rate" do pliku słownika
         with open("slownik.json", 'w') as json_file:
             json.dump(words, json_file)  
         #print('zapisano słownik')
@@ -187,19 +157,12 @@ class MenuWidget(QtWidgets.QWidget):
         msg.setText(f'Zdobywasz {points} pkt. \nOdpowiedziałaś poprawnie na {popr_odp/liczba_pytan*100} % pytań')
         msg.exec()
 
+    @Slot()
     def _start(self):
+        self.liczba_pytan = self.window.liczbaPytan.value()
         self.words = self.tasowanie_pytan()
-        if self.b1.isChecked():
-            self.wybor = 'pl'
-        else:
-            self.wybor = ''
-
-        if self.b3.isChecked():
-            self.liczba_pytan = 10
-        else:
-            self.liczba_pytan = 20
-
-        if self.b5.isChecked():
+        
+        if self.window.rBtnMowienie.isChecked():
             self.talk = TalkWidget(self.words, self.liczba_pytan, self.wybor)
             self.talk.resize(450, 100)
             self.talk.show()
@@ -366,8 +329,8 @@ class TalkWidget(QtWidgets.QWidget):
                         break            
         
         menu.save_rate(self.words)
-        menu.temp_save(self.points, self.liczba_pytan, 1)
-        self.close() #zamykanie okna instancji WriteWidget
+        menu.temp_save(self.points, self.liczba_pytan)
+        self.destroy() #zamykanie okna instancji WriteWidget
         menu.quit_msg(self.points, self.liczba_pytan, popr_odp)     
 
     def _getText(self):
@@ -488,7 +451,7 @@ class WriteWidget(QtWidgets.QWidget): # pisanie
                 self.words[i]["rate"] -= 1
       
         menu.save_rate(self.words)
-        menu.temp_save(self.points, self.liczba_pytan, 0)
+        menu.temp_save(self.points, self.liczba_pytan)
         self.close() #zamykanie okna instancji WriteWidget
         
         self.answerWindow = AnswerWindow(self.quest, self.answers, self.correctAnswer, self.points, self.liczba_pytan, popr_odp)
@@ -557,12 +520,12 @@ class AnswerWindow(QtWidgets.QWidget):
         return grid  
 
     def quit(self):
-        self.close()
+        self.destroy()
         menu.quit_msg(self.points, self.liczba_pytan, self.popr_odp)
 
 if __name__=='__main__':
     app=QtWidgets.QApplication([])
     menu = MenuWidget()
-    menu.show()
+    
     sys.exit(app.exec())
     
