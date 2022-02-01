@@ -109,6 +109,12 @@
            <pointsize>12</pointsize>
           </font>
          </property>
+         <property name="smallDecimalPoint">
+          <bool>false</bool>
+         </property>
+         <property name="segmentStyle">
+          <enum>QLCDNumber::Filled</enum>
+         </property>
         </widget>
        </item>
        <item row="0" column="0">

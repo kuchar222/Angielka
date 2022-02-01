@@ -19,16 +19,10 @@ class MenuWidget(QtWidgets.QMainWindow):
         # ładowanie głównego okna aplikacji z GUI
         loader = QUiLoader()
         self.window = loader.load("GUI/menu.ui", self)
+                
+        # ładowanie pliku temp do okna aplikacji i aktualizacja okienka statystka
+        self._aktualizacja_statystyki()
         
-        # ładowanie pliku temp do okna aplikacji
-        temp = self._temp_load()
-        sprawnosc = self._wylicz_sprawnosc(temp)
-        wizyta = self._kiedy_ostatnia_wizyta(temp['ostatnia_wizyta'])
-        self.window.mainPointsLCD.display(temp['main_points'])
-        self.window.trialNumberLCD.display(temp['trial_number'])
-        self.window.sprawnoscBar.setValue(sprawnosc)
-        self.window.wizytaLabel.setText(wizyta)
-
         # przypisanie akcji do przycisków
         self.window.jezykBtn.clicked.connect(self._wybierz_jezyk)
         self.window.startBtn.clicked.connect(self._start)
@@ -37,14 +31,29 @@ class MenuWidget(QtWidgets.QMainWindow):
         # uruchomienie okna
         self.window.show()
 
+    def _aktualizacja_statystyki(self):
+        self.temp = self._temp_load()
+        sprawnosc = self._wylicz_sprawnosc(self.temp)
+        # w przypadku braku w plik temp danych o ostatniej wizycie wystawiam komunikat "nie pamiętam"
+        try:
+            wizyta = self._kiedy_ostatnia_wizyta(self.temp['ostatnia_wizyta'])
+        except:
+            wizyta = 'NIE PAMIĘTAM'
+        self.window.mainPointsLCD.display(self.temp['main_points'])
+        self.window.trialNumberLCD.display(self.temp['trial_number'])
+        self.window.sprawnoscBar.setValue(sprawnosc)
+        self.window.wizytaLabel.setText(wizyta)
+
     def _kiedy_ostatnia_wizyta(self, data):
         # funkcja zwraca termin ostatniego uruchomienia aplikacji
         timeStamp = date.fromisoformat(data)
         ileMinelo = date.today()-timeStamp
-        if ileMinelo > timedelta(days=1):
+        if ileMinelo > timedelta(days=2):
             return f'{ileMinelo.days} DNI TEMU'
         elif ileMinelo == timedelta(days=1):
             return 'WCZORAJ'
+        elif ileMinelo == timedelta(days=2):
+            return 'PRZEDWCZORAJ'
         else:
             return 'DZISIAJ'
 
@@ -74,7 +83,6 @@ class MenuWidget(QtWidgets.QMainWindow):
             wybor = 'en'
 
         self.translate = TranslateWidget(wybor)
-        self.translate.resize(280, 100)
         self.translate.show()
 
     def _temp_load(self):
@@ -89,6 +97,8 @@ class MenuWidget(QtWidgets.QMainWindow):
         return temp
 
     def temp_save(self, points, liczba_pytan):
+        # funkcja zapisuje do pliku temp aktualne punkty, liczbę prób z podziałem na tryb mówienia i pisania
+        
         with open("temp.json", encoding="utf-8") as json_file:
             temp = json.load(json_file)
         
@@ -99,13 +109,6 @@ class MenuWidget(QtWidgets.QMainWindow):
         else:
             temp['pisanie'] += liczba_pytan
         temp['ostatnia_wizyta'] = date.today().isoformat()
-
-        a = temp['main_points']
-        b = temp['trial_number']
-               
-        self.window.mainPointsLCD.display(a)
-        self.window.trialNumberLCD.display(b)
-        self.window.sprawnoscBar.setValue(a/b*100)
                 
         with open("temp.json", 'w') as json_file:
             json.dump(temp, json_file)
@@ -150,48 +153,70 @@ class MenuWidget(QtWidgets.QMainWindow):
         #zapisywanie danych "rate" do pliku słownika
         with open("slownik.json", 'w') as json_file:
             json.dump(words, json_file)  
-        #print('zapisano słownik')
-
+        
     def quit_msg(self, points, liczba_pytan, popr_odp):
         msg = QtWidgets.QMessageBox()
+        msg.setIcon(QtWidgets.QMessageBox.Information)
+        msg.setWindowTitle('Podsumowanie')
         msg.setText(f'Zdobywasz {points} pkt. \nOdpowiedziałaś poprawnie na {popr_odp/liczba_pytan*100} % pytań')
+        msg.exec()
+    
+    def _zmien_tryb_na_msg(self, tryb):
+        msg = QtWidgets.QMessageBox()
+        msg.setIcon(QtWidgets.QMessageBox.Warning)
+        msg.setWindowTitle('Info')
+        msg.setText(f'Za często korzystasz z tej opcji, spróbuj teraz zmienić tryb na {tryb}')
         msg.exec()
 
     @Slot()
     def _start(self):
         self.liczba_pytan = self.window.liczbaPytan.value()
         self.words = self.tasowanie_pytan()
+        self.temp = self._temp_load()
+
+        if self.window.rBtnMowienie.isChecked():    # wybrano mówienie
+            # sprawdzenie warunku czy za żadko nie było pisania
+            if self.temp['pisanie']/self.temp['trial_number'] <= 0.2:
+                self._zmien_tryb_na_msg('PISANIE')    
+            else:
+                self.talk = TalkWidget(self.words, self.liczba_pytan, self.wybor)
+                self.talk.setWindowTitle('Angielka - Mówienie')
+                self.talk.show()
+        else:   # wybrano pisanie
+            # sprawdzenie warunku czy za żadko nie było mówienia
+            if self.temp['mówienie']/self.temp['trial_number'] <= 0.2:
+                self._zmien_tryb_na_msg('MÓWIENIE')
+            else:
+                self.write = WriteWidget(self.words, self.liczba_pytan, self.wybor)
+                self.write.setWindowTitle('Angielka - Pisanie')
+                self.write.resize(280, 100)
+                self.write.show()
         
-        if self.window.rBtnMowienie.isChecked():
-            self.talk = TalkWidget(self.words, self.liczba_pytan, self.wybor)
-            self.talk.resize(450, 100)
-            self.talk.show()
-            self.talk.powitanie()
-        else:
-            self.write = WriteWidget(self.words, self.liczba_pytan, self.wybor)
-            self.write.resize(280, 100)
-            self.write.show()
-        
-class TalkWidget(QtWidgets.QWidget):
+class TalkWidget(QtWidgets.QMainWindow):
     def __init__(self, words, liczba_pytan, wybor):
         super().__init__()
         self.r = sr.Recognizer()
         self.engine = tts.init()
         self.pol_glos = "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\TTS_MS_PL-PL_PAULINA_11.0"
         self.ang_glos = "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\TTS_MS_EN-US_ZIRA_11.0"
-
+        
+        # przypisanie zmiennych lokalnych
         self.words = words
         self.liczba_pytan = liczba_pytan
         self.wybor = wybor
         self.question_number = 0
         self.points = 0
         self.licznik_bledu = 0
-
         self.quest, self.correctAnswer = menu.transform_list()
-        self.layout = self._initialize_layout()
-        self.setLayout(self.layout)
-        self.setWindowTitle("Angielka - Mówienie")
-
+       
+        # ładowanie głównego okna aplikacji z GUI
+        loader = QUiLoader()
+        self.window = loader.load("GUI/mowienie.ui", self)
+        self.window.start_btn.clicked.connect(self._asking)
+        self.window.pytanie_label.setText(f' _ z {self.liczba_pytan}')
+        
+        self.powitanie()
+        
     def powitanie(self):
         self.engine.say(f'witaj w trybie mówienia, odpowiesz na {self.liczba_pytan} pytań')
         self.engine.say('wciśnij start gdy będziesz gotowa')
@@ -205,38 +230,11 @@ class TalkWidget(QtWidgets.QWidget):
             for line in lines: fraza.append(line.strip())
             frazy.append(fraza)
         return frazy
-
-    def _initialize_layout(self):
-        grid = QtWidgets.QGridLayout()
-        self.pytanie_label = QtWidgets.QLabel(f'Pytanie nr: _/{self.liczba_pytan}')
-        self.pytanie_label.setFont(QtGui.QFont('Sanserif', 13))
-        self.punkty_label = QtWidgets.QLabel(f'     Punkty: {self.points}')
-        self.punkty_label.setFont(QtGui.QFont('Sanserif', 13))
-        self.word_label = QtWidgets.QLabel()
-        self.word_label.setFont(QtGui.QFont('Sanserif', 16))
-        arrows_label = QtWidgets.QLabel('         >>>')
-        arrows_label.setFont(QtGui.QFont('Sanserif', 13))
-        self.ans_label = QtWidgets.QLabel()
-        self.ans_label.setFont(QtGui.QFont('Sanserif', 16))
-        start_btn = QtWidgets.QPushButton('START')
-        start_btn.setStyleSheet("background-color: green")
-        start_btn.setFont(QtGui.QFont('Arial', 10,))
-        start_btn.clicked.connect(self._asking)
-        grid.addWidget(self.pytanie_label, 0, 1)
-        grid.addWidget(self.punkty_label, 1, 1)
-        grid.addWidget(self.word_label, 2, 0)
-        grid.addWidget(arrows_label, 2, 1)
-        grid.addWidget(self.ans_label, 2, 2)
-        grid.addWidget(start_btn, 3, 1)
-
-        return grid
         
     def _ask(self, i):
-        self.word_label.setText('')
-        self.ans_label.setText('')
-        self.word_label.repaint()
-        self.ans_label.repaint()
-
+        self.window.word_label.setText('')
+        self.window.ans_label.setText('')
+        self.window.repaint()
         if self.wybor == 'pl':
             self.engine.say("jak jest po polsku")
             self.engine.setProperty('voice', self.ang_glos)
@@ -247,18 +245,17 @@ class TalkWidget(QtWidgets.QWidget):
             self.engine.say(self.quest[i])
         self.engine.runAndWait()
 
-        self.word_label.setText(self.quest[i])
-        self.word_label.repaint()
-
+        self.window.word_label.setText(self.quest[i])
+        self.window.repaint()
+        
+    @Slot()
     def _asking(self):
         frazy = self._pobieranie_fraz(PATHS)
         popr_odp = 0
         for i, ans in enumerate(self.correctAnswer):
             self.question_number = i + 1
-            self.pytanie_label.setText(f'Pytanie nr: {self.question_number}/{self.liczba_pytan}')
-            self.punkty_label.setText(f'     Punkty: {self.points}')
-            self.pytanie_label.repaint()
-            self.punkty_label.repaint()
+            self.window.pytanie_label.setText(f' {self.question_number} z {self.liczba_pytan}')
+            self.window.repaint()
             self._ask(i)
             
             while True:
@@ -276,8 +273,8 @@ class TalkWidget(QtWidgets.QWidget):
                             self.engine.setProperty('voice',self.pol_glos)
                         self.engine.runAndWait()
                         self.words[i]["rate"] -= 0.5
-                        self.ans_label.setText(ans)
-                        self.ans_label.repaint()
+                        self.window.ans_label.setText(ans)
+                        self.window.repaint()
                         time.sleep(2)
                         break 
                     elif odp in frazy[1]: # frazy2.txt zwroty zdenerwowania obrażające Angielkę :)
@@ -291,8 +288,9 @@ class TalkWidget(QtWidgets.QWidget):
                         self.engine.runAndWait()
                         self._ask(i)
                     elif odp == ans:
-                        self.ans_label.setText(odp)
-                        self.ans_label.repaint()
+                        self.window.ans_label.setStyleSheet("color : green")
+                        self.window.ans_label.setText(odp)
+                        self.window.repaint()
                         self.engine.say("bardzo dobrze")
                         self.engine.runAndWait()
                         popr_odp += 1
@@ -302,34 +300,39 @@ class TalkWidget(QtWidgets.QWidget):
                         else:
                             self.words[i]["rate"] += 1
                             self.points += 1.5
+                        self.window.punkty_label.setValue(popr_odp/self.liczba_pytan*100)
+                        self.window.repaint()
                         break
                     else:
                         self.engine.say("źle, zrozumiałam, że powiedziałaś")
                         self.words[i]["rate"] -= 0.5
                         if self.wybor == 'pl':
                             self.engine.say(odp)
-                            self.ans_label.setText(odp)
-                            self.ans_label.repaint()
+                            self.window.ans_label.setStyleSheet("color : red")
+                            self.window.ans_label.setText(odp)
+                            self.window.repaint()
                             self.engine.say('a powinno być')
                             self.engine.say(ans)
                         else:
                             self.engine.setProperty('voice', self.ang_glos)
                             self.engine.say(odp)
-                            self.ans_label.setText(odp)
-                            self.ans_label.repaint()
+                            self.window.ans_label.setText(odp)
+                            self.window.repaint()
                             self.engine.setProperty('voice',self.pol_glos)
                             self.engine.say('a powinno być')
                             self.engine.setProperty('voice', self.ang_glos)
                             self.engine.say(ans)
                             self.engine.setProperty('voice',self.pol_glos)
                         self.engine.runAndWait()
-                        self.ans_label.setText(ans)
-                        self.ans_label.repaint()
+                        self.window.ans_label.setStyleSheet("color : green")
+                        self.window.ans_label.setText(ans)
+                        self.window.repaint()
                         time.sleep(2)
                         break            
         
         menu.save_rate(self.words)
         menu.temp_save(self.points, self.liczba_pytan)
+        menu._aktualizacja_statystyki()
         self.destroy() #zamykanie okna instancji WriteWidget
         menu.quit_msg(self.points, self.liczba_pytan, popr_odp)     
 
@@ -377,49 +380,30 @@ class TranslateWidget(QtWidgets.QWidget): # tłumaczenie słów przy pomocy goog
         super().__init__()
         self.wybor = wybor
         self.translator = Translator()
-        self.layout = self._initialize_layout()
-        self.setLayout(self.layout)
-        self.setWindowTitle("Angielka - Tłumaczenie")
 
-    def _initialize_layout(self):
-                
+        loader = QUiLoader()
+        self.window = loader.load("GUI/translator.ui", self)
+        self.window.setWindowTitle("Angielka - Tłumaczenie")
         if self.wybor == 'en':
             src = 'j. polski'
             dest = 'j. angielski'
         else:
             dest = 'j. polski'
             src = 'j. angielski'
+        self.window.name_to_translate.setText(src)
+        self.window.name_translated.setText(dest)
+        self.window.pushButton.clicked.connect(self._translate_word)        
+        self.window.show()
 
-        grid = QtWidgets.QGridLayout()
-        name_to_translate = QtWidgets.QLabel(src)
-        name_to_translate.setFont(QtGui.QFont('Sanserif', 13))
-        name_translated = QtWidgets.QLabel(dest)
-        name_translated.setFont(QtGui.QFont('Sanserif', 13))
-        self.entry_to_translate = QtWidgets.QLineEdit()
-        self.label_translated = QtWidgets.QLabel()
-        arrows = QtWidgets.QLabel("        >>>         ")
-        
-        button = QtWidgets.QPushButton('TŁUMACZ')
-        button.setStyleSheet("background-color: green")
-        button.setFont(QtGui.QFont('Arial', 10,))
-        button.clicked.connect(self._translate_word)
-
-        grid.addWidget(name_to_translate, 0, 0)
-        grid.addWidget(name_translated, 0, 2)
-        grid.addWidget(self.entry_to_translate, 1, 0)
-        grid.addWidget(arrows, 1, 1)
-        grid.addWidget(self.label_translated, 1, 2)
-        grid.addWidget(button, 2, 1)
-        return grid
-
+    @Slot()
     def _translate_word(self):
-        word = self.entry_to_translate.text()
+        word = self.window.entry_to_translate.text()
         if self.wybor == 'pl':
             translated_word = self.translator.translate(word, src='en', dest='pl').text
         else:
             translated_word = self.translator.translate(word, src='pl', dest='en').text
-        self.label_translated.setText(translated_word)
-        self.label_translated.repaint()
+        self.window.label_translated.setText(translated_word)
+        #self.label_translated.repaint()
 
 class WriteWidget(QtWidgets.QWidget): # pisanie
     def __init__(self, words, liczba_pytan, wybor):
@@ -452,7 +436,8 @@ class WriteWidget(QtWidgets.QWidget): # pisanie
       
         menu.save_rate(self.words)
         menu.temp_save(self.points, self.liczba_pytan)
-        self.close() #zamykanie okna instancji WriteWidget
+        menu._aktualizacja_statystyki()
+        self.destroy() #zamykanie okna instancji WriteWidget
         
         self.answerWindow = AnswerWindow(self.quest, self.answers, self.correctAnswer, self.points, self.liczba_pytan, popr_odp)
         self.answerWindow.show()
@@ -525,7 +510,6 @@ class AnswerWindow(QtWidgets.QWidget):
 
 if __name__=='__main__':
     app=QtWidgets.QApplication([])
+    app.setQuitOnLastWindowClosed(False)
     menu = MenuWidget()
-    
-    sys.exit(app.exec())
-    
+    sys.exit(app.exec()) 
