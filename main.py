@@ -1,9 +1,10 @@
 import sys, json, time
 from datetime import timedelta, date
 from googletrans import Translator
+from PySide6.QtGui import QFont
 from PySide6 import QtWidgets, QtGui
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import Slot
+from PySide6.QtCore import Slot, QSize, Qt
 import speech_recognition as sr     #głos na tekst
 import pyttsx3 as tts               #tekst na głos
 
@@ -83,6 +84,7 @@ class MenuWidget(QtWidgets.QMainWindow):
             wybor = 'en'
 
         self.translate = TranslateWidget(wybor)
+        self.translate.setWindowTitle('Angielka - Tłumaczenie')
         self.translate.show()
 
     def _temp_load(self):
@@ -158,7 +160,7 @@ class MenuWidget(QtWidgets.QMainWindow):
         msg = QtWidgets.QMessageBox()
         msg.setIcon(QtWidgets.QMessageBox.Information)
         msg.setWindowTitle('Podsumowanie')
-        msg.setText(f'Zdobywasz {points} pkt. \nOdpowiedziałaś poprawnie na {popr_odp/liczba_pytan*100} % pytań')
+        msg.setText(f'Zdobywasz {points} pkt. \nOdpowiedziałaś poprawnie na {int(popr_odp/liczba_pytan*100)} % pytań')
         msg.exec()
     
     def _zmien_tryb_na_msg(self, tryb):
@@ -316,6 +318,7 @@ class TalkWidget(QtWidgets.QMainWindow):
                         else:
                             self.engine.setProperty('voice', self.ang_glos)
                             self.engine.say(odp)
+                            self.window.ans_label.setStyleSheet("color : red")
                             self.window.ans_label.setText(odp)
                             self.window.repaint()
                             self.engine.setProperty('voice',self.pol_glos)
@@ -403,7 +406,6 @@ class TranslateWidget(QtWidgets.QWidget): # tłumaczenie słów przy pomocy goog
         else:
             translated_word = self.translator.translate(word, src='pl', dest='en').text
         self.window.label_translated.setText(translated_word)
-        #self.label_translated.repaint()
 
 class WriteWidget(QtWidgets.QWidget): # pisanie
     def __init__(self, words, liczba_pytan, wybor):
@@ -446,24 +448,41 @@ class WriteWidget(QtWidgets.QWidget): # pisanie
         self.answers=[]
 
         grid = QtWidgets.QGridLayout()
+        grid.setHorizontalSpacing(15)
+        grid.setContentsMargins(5, 5, 5, 5)
         for row, word in enumerate(self.quest):
             label_number = QtWidgets.QLabel(str(row+1))
-            label_number.setFont(QtGui.QFont('Sanserif', 13))
+            label_number.setFont(QFont('Sanserif', 14))
             label_word = QtWidgets.QLabel(word)
-            label_word.setFont(QtGui.QFont('Sanserif', 13,))
+            label_word.setFont(QFont('Sanserif', 14))
             label_odp = QtWidgets.QLineEdit()
+            label_odp.setFont(QFont('Sanserif', 14))
             self.answers.append(label_odp)
             grid.addWidget(label_number, row, 0)
             grid.addWidget(label_word, row, 1)
             grid.addWidget(label_odp, row, 2)
               
         button = QtWidgets.QPushButton('SPRAWDŹ')
-        button.setStyleSheet("background-color: green")
-        button.setFont(QtGui.QFont('Arial', 10,))
+        font = QFont()
+        font.setPointSize(12)
+        font.setBold(True)
+        button.setStyleSheet(u"background-color: rgb(85, 170, 0);\n"
+"color: rgb(255, 255, 127);")
+        button.setFont(font)
+        button.setMinimumSize(QSize(130, 35))
+        button.setMaximumSize(QSize(130, 35))
+        button.setDefault(True)
         button.clicked.connect(self._check_translation)
-        grid.addWidget(button, len(self.quest), 2)
+                
+        h_frame = QtWidgets.QHBoxLayout()
+        h_frame.setAlignment(Qt.AlignCenter)
+        h_frame.addWidget(button)
         
-        return grid
+        frame = QtWidgets.QVBoxLayout()
+        frame.addLayout(grid)
+        frame.addLayout(h_frame)
+
+        return frame
 
 # okno wyświetlające udzielone odpowiedzi i poprawne odpowiedzi
 class AnswerWindow(QtWidgets.QWidget):
@@ -480,29 +499,46 @@ class AnswerWindow(QtWidgets.QWidget):
         self.setWindowTitle("Angielka - Pisanie - Odpowiedzi")
 
     def _initialize_answer_window(self):
-
         grid = QtWidgets.QGridLayout()
+        grid.setHorizontalSpacing(20)
+        grid.setVerticalSpacing(10)
+        grid.setContentsMargins(5, 5, 5, 5)
         for row, word in enumerate(self.quest):
             label_number = QtWidgets.QLabel(str(row+1))
-            label_number.setFont(QtGui.QFont('Sanserif', 13))
+            label_number.setFont(QFont('Sanserif', 14))
             label_word = QtWidgets.QLabel(word)
-            label_word.setFont(QtGui.QFont('Sanserif', 13))
+            label_word.setFont(QFont('Sanserif', 14))
             label_odp = QtWidgets.QLabel(self.answers[row].text())
-            label_odp.setFont(QtGui.QFont('Sanserif', 13))
+            label_odp.setFont(QFont('Sanserif', 14))
             label_correct_answer = QtWidgets.QLabel(self.correctAnswer[row])
-            label_correct_answer.setStyleSheet("background-color: green") if self.answers[row].text().lower() == self.correctAnswer[row] else label_correct_answer.setStyleSheet("background-color: red")
-            label_correct_answer.setFont(QtGui.QFont('Sanserif', 13))
+            label_correct_answer.setStyleSheet("color: green") if self.answers[row].text().lower() == self.correctAnswer[row] else label_correct_answer.setStyleSheet("color: red")
+            label_correct_answer.setFont(QFont('Sanserif', 14))
             grid.addWidget(label_number, row, 0)
             grid.addWidget(label_word, row, 1)
             grid.addWidget(label_odp, row, 2)
             grid.addWidget(label_correct_answer, row, 3)
 
         button = QtWidgets.QPushButton('KONIEC')
-        button.setStyleSheet("background-color: purple")
-        button.setFont(QtGui.QFont('Arial', 10,))
+        font2 = QFont()
+        font2.setPointSize(12)
+        font2.setBold(True)
+        button.setStyleSheet(u"background-color: rgb(85, 170, 0);\n"
+"color: rgb(255, 255, 127);")
+        button.setFont(font2)
+        button.setMinimumSize(QSize(130, 35))
+        button.setMaximumSize(QSize(130, 35))
+        button.setDefault(True)
         button.clicked.connect(self.quit)
-        grid.addWidget(button, len(self.quest), 2)
-        return grid  
+        
+        h_frame = QtWidgets.QHBoxLayout()
+        h_frame.setAlignment(Qt.AlignCenter)
+        h_frame.addWidget(button)
+        
+        frame = QtWidgets.QVBoxLayout()
+        frame.addLayout(grid)
+        frame.addLayout(h_frame)
+
+        return frame  
 
     def quit(self):
         self.destroy()
