@@ -11,9 +11,10 @@ Najbliższe cele do wykonania:
     - być może zapisać w osobnym pliku w formacie .ui
 3. Dopracować GUI w trybie tłumaczenia
     - zapisać w osobnym pliku w formacie .ui    ZROBIONE
+    - dodać możliwość wyboru kierunku tłumaczenia  ZROBIONE
 4. Dodać opcje sprawdzania czy użytkownik nie używa za dużo z jednego trybu (powyżej 80%)   ZROBIONE
 5. Dadać grafikę (flagi) przy wyborze jezyka
-    - w oknie głównym
-    - w oknie tłumacza
+    - w oknie głównym               ZROBIONE
+    - w oknie tłumacza              ZROBIONE
 6. Opracować okno powitalne (intro)
 
