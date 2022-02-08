@@ -1,4 +1,4 @@
-import sys, json, time
+import sys, json, time, smtplib
 from datetime import timedelta, date
 from googletrans import Translator
 from PySide6.QtGui import QFont, QPixmap, QIcon
@@ -28,6 +28,7 @@ class MenuWidget(QtWidgets.QMainWindow):
 
         # ładowanie pliku temp do okna aplikacji i aktualizacja okienka statystka
         self._aktualizacja_statystyki()
+        if self.wizyta != 'DZISIAJ': self._informuj_przez_mail(f'Luiza uruchomila Angielke. \nPunkty: {self.temp["main_points"]} \nSprawnosc: {self.sprawnosc}% \nOstatnia wizyta: {self.wizyta}')
         self._wybierz_jezyk()
         
         # przypisanie akcji do przycisków
@@ -42,16 +43,16 @@ class MenuWidget(QtWidgets.QMainWindow):
 
     def _aktualizacja_statystyki(self):
         self.temp = self._temp_load()
-        sprawnosc = self._wylicz_sprawnosc(self.temp)
+        self.sprawnosc = self._wylicz_sprawnosc(self.temp)
         # w przypadku braku w plik temp danych o ostatniej wizycie wystawiam komunikat "nie pamiętam"
         try:
-            wizyta = self._kiedy_ostatnia_wizyta(self.temp['ostatnia_wizyta'])
+            self.wizyta = self._kiedy_ostatnia_wizyta(self.temp['ostatnia_wizyta'])
         except:
-            wizyta = 'NIE PAMIĘTAM'
+            self.wizyta = 'NIE PAMIĘTAM'
         self.window.mainPointsLCD.display(self.temp['main_points'])
         self.window.trialNumberLCD.display(self.temp['trial_number'])
-        self.window.sprawnoscBar.setValue(sprawnosc)
-        self.window.wizytaLabel.setText(wizyta)
+        self.window.sprawnoscBar.setValue(self.sprawnosc)
+        self.window.wizytaLabel.setText(self.wizyta)
 
     def _kiedy_ostatnia_wizyta(self, data):
         # funkcja zwraca termin ostatniego uruchomienia aplikacji
@@ -66,10 +67,24 @@ class MenuWidget(QtWidgets.QMainWindow):
         else:
             return 'DZISIAJ'
 
+    def _informuj_przez_mail(self, text=str):
+        # funkcja wysyła e-mail z informacją msg z adresu send_from do adresu send_to
+        
+        send_from = self.temp["login"]
+        send_to = self.temp["send_to"]
+        msg = f'From: {self.temp["login"]} \nSubject: Angielka \n\n{text}'
+
+        smptObj = smtplib.SMTP(self.temp["serwerSMTP"], 587)
+        smptObj.ehlo()  # tu jest sprawdzanie połaczenie powinna być odpowiedź: smptObj.ehlo()[0] == 250
+        smptObj.starttls()
+        smptObj.login(self.temp["login"], self.temp["password"])
+        smptObj.sendmail(send_from, send_to, msg)
+        smptObj.quit()
+        
     def _wylicz_sprawnosc(self, temp):
         # funkcja zwraca sprawnosc oddawanych odpowiedzi
         if temp['trial_number'] > 0: 
-            return temp['main_points']/temp['trial_number']*100 
+            return round(temp['main_points']/temp['trial_number']*100) 
         else:
             return 0
 
@@ -83,9 +98,6 @@ class MenuWidget(QtWidgets.QMainWindow):
             self.wybor = 'pl'
             self.window.jezykZ.setPixmap(self.pix_ang)
             self.window.jezykNa.setPixmap(self.pix_pol)
-
-    # def _ustaw_flagi(self):
-    #     if self.wybor == 'pl':
     
     @Slot()
     def _translator(self):
@@ -303,7 +315,13 @@ class TalkWidget(QtWidgets.QMainWindow):
                         self.engine.say("chyba ty, czekam na odpowiedź")
                         self.engine.runAndWait()
                     elif odp in frazy[2]: # frazy3.txt zwroty zrezygnowania, niechęci do dalszego odpowiadania
-                        self.engine.say(f"nie marudź, zostało ci już tylko {self.liczba_pytan - self.question_number} pytań, czekam na odpowiedź")
+                        if self.liczba_pytan - self.question_number == 0:
+                            text = 'ostanie pytanie'
+                        elif self.liczba_pytan - self.question_number > 0 and self.liczba_pytan - self.question_number < 4:
+                            text = f'{self.liczba_pytan - self.question_number + 1} pytania'
+                        else:
+                            text = f'{self.liczba_pytan - self.question_number + 1} pytań'
+                        self.engine.say(f"nie marudź, zostało ci już tylko {text}, czekam na odpowiedź")
                         self.engine.runAndWait()
                     elif odp in frazy[3]: # frazy4.txt zwroty niezrozumienia pytania i prośby o powtórzenie          
                         self.engine.say("dobrze, to powtórzę")
@@ -588,6 +606,8 @@ class AnswerWindow(QtWidgets.QWidget):
     def quit(self):
         self.destroy()
         main.quit_msg(self.points, self.liczba_pytan, self.popr_odp)
+
+# TODO uruchomić okno powitalne - Intro
 
 # class IntroWindow(QtWidgets.QMainWindow):
 #     def __init__(self):
