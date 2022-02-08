@@ -1,4 +1,4 @@
-import sys, json, time
+import sys, json, time, smtplib
 from datetime import timedelta, date
 from googletrans import Translator
 from PySide6.QtGui import QFont, QPixmap, QIcon
@@ -28,6 +28,7 @@ class MenuWidget(QtWidgets.QMainWindow):
 
         # ładowanie pliku temp do okna aplikacji i aktualizacja okienka statystka
         self._aktualizacja_statystyki()
+        if self.wizyta != 'DZISIAJ': self._informuj_przez_mail(f'Luiza uruchomila Angielke. \nPunkty: {self.temp["main_points"]} \nSprawnosc: {self.sprawnosc}% \nOstatnia wizyta: {self.wizyta}')
         self._wybierz_jezyk()
         
         # przypisanie akcji do przycisków
@@ -42,16 +43,16 @@ class MenuWidget(QtWidgets.QMainWindow):
 
     def _aktualizacja_statystyki(self):
         self.temp = self._temp_load()
-        sprawnosc = self._wylicz_sprawnosc(self.temp)
+        self.sprawnosc = self._wylicz_sprawnosc(self.temp)
         # w przypadku braku w plik temp danych o ostatniej wizycie wystawiam komunikat "nie pamiętam"
         try:
-            wizyta = self._kiedy_ostatnia_wizyta(self.temp['ostatnia_wizyta'])
+            self.wizyta = self._kiedy_ostatnia_wizyta(self.temp['ostatnia_wizyta'])
         except:
-            wizyta = 'NIE PAMIĘTAM'
+            self.wizyta = 'NIE PAMIĘTAM'
         self.window.mainPointsLCD.display(self.temp['main_points'])
         self.window.trialNumberLCD.display(self.temp['trial_number'])
-        self.window.sprawnoscBar.setValue(sprawnosc)
-        self.window.wizytaLabel.setText(wizyta)
+        self.window.sprawnoscBar.setValue(self.sprawnosc)
+        self.window.wizytaLabel.setText(self.wizyta)
 
     def _kiedy_ostatnia_wizyta(self, data):
         # funkcja zwraca termin ostatniego uruchomienia aplikacji
@@ -66,10 +67,24 @@ class MenuWidget(QtWidgets.QMainWindow):
         else:
             return 'DZISIAJ'
 
+    def _informuj_przez_mail(self, text=str):
+        # funkcja wysyła e-mail z informacją msg z adresu send_from do adresu send_to
+        
+        send_from = self.temp["login"]
+        send_to = self.temp["send_to"]
+        msg = f'From: {self.temp["login"]} \nSubject: Angielka \n\n{text}'
+
+        smptObj = smtplib.SMTP(self.temp["serwerSMTP"], 587)
+        smptObj.ehlo()  # tu jest sprawdzanie połaczenie powinna być odpowiedź: smptObj.ehlo()[0] == 250
+        smptObj.starttls()
+        smptObj.login(self.temp["login"], self.temp["password"])
+        smptObj.sendmail(send_from, send_to, msg)
+        smptObj.quit()
+        
     def _wylicz_sprawnosc(self, temp):
         # funkcja zwraca sprawnosc oddawanych odpowiedzi
         if temp['trial_number'] > 0: 
-            return temp['main_points']/temp['trial_number']*100 
+            return round(temp['main_points']/temp['trial_number']*100) 
         else:
             return 0
 
@@ -83,9 +98,6 @@ class MenuWidget(QtWidgets.QMainWindow):
             self.wybor = 'pl'
             self.window.jezykZ.setPixmap(self.pix_ang)
             self.window.jezykNa.setPixmap(self.pix_pol)
-
-    # def _ustaw_flagi(self):
-    #     if self.wybor == 'pl':
     
     @Slot()
     def _translator(self):
@@ -176,9 +188,18 @@ class MenuWidget(QtWidgets.QMainWindow):
     
     def _zmien_tryb_na_msg(self, tryb):
         msg = QtWidgets.QMessageBox()
-        msg.setIcon(QtWidgets.QMessageBox.Warning)
-        msg.setWindowTitle('Info')
+        msg.setIcon(QtWidgets.QMessageBox.Information)
+        msg.setWindowTitle('Zmień tryb')
         msg.setText(f'Za często korzystasz z tej opcji, spróbuj teraz zmienić tryb na {tryb}')
+        msg.exec()
+
+    def error_msg(self, text=str):
+        # funkcja zwraca okno informujące o problemach w działaniu aplikacji
+
+        msg = QtWidgets.QMessageBox()
+        msg.setIcon(QtWidgets.QMessageBox.Warning)
+        msg.setWindowTitle('Uwaga')
+        msg.setText(f'Coś poszło nie tak: {text}')
         msg.exec()
 
     @Slot()
@@ -220,7 +241,7 @@ class TalkWidget(QtWidgets.QMainWindow):
         self.question_number = 0
         self.points = 0
         self.licznik_bledu = 0
-        self.quest, self.correctAnswer = menu.transform_list()
+        self.quest, self.correctAnswer = main.transform_list()
        
         # ładowanie głównego okna aplikacji z GUI
         loader = QUiLoader()
@@ -294,7 +315,13 @@ class TalkWidget(QtWidgets.QMainWindow):
                         self.engine.say("chyba ty, czekam na odpowiedź")
                         self.engine.runAndWait()
                     elif odp in frazy[2]: # frazy3.txt zwroty zrezygnowania, niechęci do dalszego odpowiadania
-                        self.engine.say(f"nie marudź, zostało ci już tylko {self.liczba_pytan - self.question_number} pytań, czekam na odpowiedź")
+                        if self.liczba_pytan - self.question_number == 0:
+                            text = 'ostanie pytanie'
+                        elif self.liczba_pytan - self.question_number > 0 and self.liczba_pytan - self.question_number < 4:
+                            text = f'{self.liczba_pytan - self.question_number + 1} pytania'
+                        else:
+                            text = f'{self.liczba_pytan - self.question_number + 1} pytań'
+                        self.engine.say(f"nie marudź, zostało ci już tylko {text}, czekam na odpowiedź")
                         self.engine.runAndWait()
                     elif odp in frazy[3]: # frazy4.txt zwroty niezrozumienia pytania i prośby o powtórzenie          
                         self.engine.say("dobrze, to powtórzę")
@@ -344,11 +371,11 @@ class TalkWidget(QtWidgets.QMainWindow):
                         time.sleep(2)
                         break            
         
-        menu.save_rate(self.words)
-        menu.temp_save(self.points, self.liczba_pytan)
-        menu._aktualizacja_statystyki()
+        main.save_rate(self.words)
+        main.temp_save(self.points, self.liczba_pytan)
+        main._aktualizacja_statystyki()
         self.destroy() #zamykanie okna instancji WriteWidget
-        menu.quit_msg(self.points, self.liczba_pytan, popr_odp)     
+        main.quit_msg(self.points, self.liczba_pytan, popr_odp)     
 
     def _getText(self):
         try:
@@ -383,8 +410,9 @@ class TalkWidget(QtWidgets.QMainWindow):
                 self.licznik_bledu += 1
                 return None
         except sr.RequestError:
-            self.engine.say('czekaj, brak połączenia z internetem')
-            self.engine.runAndWait()
+            # self.engine.say('czekaj, brak połączenia z internetem')
+            # self.engine.runAndWait()
+            main.error_msg('brak połączenia z internetem')
             return None
         except:    
             return None
@@ -393,7 +421,7 @@ class TranslateWidget(QtWidgets.QWidget): # tłumaczenie słów przy pomocy goog
     def __init__(self, wybor):
         super().__init__()
         self.wybor = wybor
-        self.translator = Translator()
+        self.translator = Translator(raise_exception=True)
        
         # tworzenie obiektów grafiki
         self.pix_ang = QPixmap(r'img\united_kingdom_flag_background_64.png')
@@ -431,11 +459,14 @@ class TranslateWidget(QtWidgets.QWidget): # tłumaczenie słów przy pomocy goog
     @Slot()
     def _translate_word(self):
         word = self.window.entry_to_translate.text()
-        if self.wybor == 'pl':
-            translated_word = self.translator.translate(word, src='en', dest='pl').text
-        else:
-            translated_word = self.translator.translate(word, src='pl', dest='en').text
-        self.window.label_translated.setText(translated_word)
+        try:
+            if self.wybor == 'pl':
+                translated_word = self.translator.translate(word, src='en', dest='pl').text
+            else:
+                translated_word = self.translator.translate(word, src='pl', dest='en').text
+            self.window.label_translated.setText(translated_word)
+        except:
+            main.error_msg('brak połączenia z internetem')
 
 class WriteWidget(QtWidgets.QWidget): # pisanie
     def __init__(self, words, liczba_pytan, wybor):
@@ -444,7 +475,7 @@ class WriteWidget(QtWidgets.QWidget): # pisanie
         self.liczba_pytan = liczba_pytan
         self.wybor = wybor
         
-        self.quest, self.correctAnswer = menu.transform_list()
+        self.quest, self.correctAnswer = main.transform_list()
         self.layout = self._initialize_layout()
         self.setLayout(self.layout)
         self.setWindowTitle("Angielka - Pisanie")
@@ -466,9 +497,9 @@ class WriteWidget(QtWidgets.QWidget): # pisanie
             else:
                 self.words[i]["rate"] -= 1
       
-        menu.save_rate(self.words)
-        menu.temp_save(self.points, self.liczba_pytan)
-        menu._aktualizacja_statystyki()
+        main.save_rate(self.words)
+        main.temp_save(self.points, self.liczba_pytan)
+        main._aktualizacja_statystyki()
         self.destroy() #zamykanie okna instancji WriteWidget
         
         self.answerWindow = AnswerWindow(self.quest, self.answers, self.correctAnswer, self.points, self.liczba_pytan, popr_odp)
@@ -574,10 +605,29 @@ class AnswerWindow(QtWidgets.QWidget):
 
     def quit(self):
         self.destroy()
-        menu.quit_msg(self.points, self.liczba_pytan, self.popr_odp)
+        main.quit_msg(self.points, self.liczba_pytan, self.popr_odp)
+
+# TODO uruchomić okno powitalne - Intro
+
+# class IntroWindow(QtWidgets.QMainWindow):
+#     def __init__(self):
+#         super().__init__()
+#         #pix_intro = QPixmap()
+#         loader = QUiLoader()
+#         self.window = loader.load(r'GUI\intro.ui', self)
+#         #self.window.intro.setPixmap(pix_intro)
+#         self.window.pushButton.clicked.connect(self._start)
+
+#         self.window.show()
+
+#     def _start(self):
+#         menu = MenuWidget()
+#         menu.show()
+        
 
 if __name__=='__main__':
     app=QtWidgets.QApplication([])
     app.setQuitOnLastWindowClosed(False)
-    menu = MenuWidget()
+    main = MenuWidget()
+    
     sys.exit(app.exec()) 
