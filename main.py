@@ -176,9 +176,18 @@ class MenuWidget(QtWidgets.QMainWindow):
     
     def _zmien_tryb_na_msg(self, tryb):
         msg = QtWidgets.QMessageBox()
-        msg.setIcon(QtWidgets.QMessageBox.Warning)
-        msg.setWindowTitle('Info')
+        msg.setIcon(QtWidgets.QMessageBox.Information)
+        msg.setWindowTitle('Zmień tryb')
         msg.setText(f'Za często korzystasz z tej opcji, spróbuj teraz zmienić tryb na {tryb}')
+        msg.exec()
+
+    def error_msg(self, text=str):
+        # funkcja zwraca okno informujące o problemach w działaniu aplikacji
+
+        msg = QtWidgets.QMessageBox()
+        msg.setIcon(QtWidgets.QMessageBox.Warning)
+        msg.setWindowTitle('Uwaga')
+        msg.setText(f'Coś poszło nie tak: {text}')
         msg.exec()
 
     @Slot()
@@ -220,7 +229,7 @@ class TalkWidget(QtWidgets.QMainWindow):
         self.question_number = 0
         self.points = 0
         self.licznik_bledu = 0
-        self.quest, self.correctAnswer = menu.transform_list()
+        self.quest, self.correctAnswer = main.transform_list()
        
         # ładowanie głównego okna aplikacji z GUI
         loader = QUiLoader()
@@ -344,11 +353,11 @@ class TalkWidget(QtWidgets.QMainWindow):
                         time.sleep(2)
                         break            
         
-        menu.save_rate(self.words)
-        menu.temp_save(self.points, self.liczba_pytan)
-        menu._aktualizacja_statystyki()
+        main.save_rate(self.words)
+        main.temp_save(self.points, self.liczba_pytan)
+        main._aktualizacja_statystyki()
         self.destroy() #zamykanie okna instancji WriteWidget
-        menu.quit_msg(self.points, self.liczba_pytan, popr_odp)     
+        main.quit_msg(self.points, self.liczba_pytan, popr_odp)     
 
     def _getText(self):
         try:
@@ -383,8 +392,9 @@ class TalkWidget(QtWidgets.QMainWindow):
                 self.licznik_bledu += 1
                 return None
         except sr.RequestError:
-            self.engine.say('czekaj, brak połączenia z internetem')
-            self.engine.runAndWait()
+            # self.engine.say('czekaj, brak połączenia z internetem')
+            # self.engine.runAndWait()
+            main.error_msg('brak połączenia z internetem')
             return None
         except:    
             return None
@@ -393,7 +403,7 @@ class TranslateWidget(QtWidgets.QWidget): # tłumaczenie słów przy pomocy goog
     def __init__(self, wybor):
         super().__init__()
         self.wybor = wybor
-        self.translator = Translator()
+        self.translator = Translator(raise_exception=True)
        
         # tworzenie obiektów grafiki
         self.pix_ang = QPixmap(r'img\united_kingdom_flag_background_64.png')
@@ -431,11 +441,14 @@ class TranslateWidget(QtWidgets.QWidget): # tłumaczenie słów przy pomocy goog
     @Slot()
     def _translate_word(self):
         word = self.window.entry_to_translate.text()
-        if self.wybor == 'pl':
-            translated_word = self.translator.translate(word, src='en', dest='pl').text
-        else:
-            translated_word = self.translator.translate(word, src='pl', dest='en').text
-        self.window.label_translated.setText(translated_word)
+        try:
+            if self.wybor == 'pl':
+                translated_word = self.translator.translate(word, src='en', dest='pl').text
+            else:
+                translated_word = self.translator.translate(word, src='pl', dest='en').text
+            self.window.label_translated.setText(translated_word)
+        except:
+            main.error_msg('brak połączenia z internetem')
 
 class WriteWidget(QtWidgets.QWidget): # pisanie
     def __init__(self, words, liczba_pytan, wybor):
@@ -444,7 +457,7 @@ class WriteWidget(QtWidgets.QWidget): # pisanie
         self.liczba_pytan = liczba_pytan
         self.wybor = wybor
         
-        self.quest, self.correctAnswer = menu.transform_list()
+        self.quest, self.correctAnswer = main.transform_list()
         self.layout = self._initialize_layout()
         self.setLayout(self.layout)
         self.setWindowTitle("Angielka - Pisanie")
@@ -466,9 +479,9 @@ class WriteWidget(QtWidgets.QWidget): # pisanie
             else:
                 self.words[i]["rate"] -= 1
       
-        menu.save_rate(self.words)
-        menu.temp_save(self.points, self.liczba_pytan)
-        menu._aktualizacja_statystyki()
+        main.save_rate(self.words)
+        main.temp_save(self.points, self.liczba_pytan)
+        main._aktualizacja_statystyki()
         self.destroy() #zamykanie okna instancji WriteWidget
         
         self.answerWindow = AnswerWindow(self.quest, self.answers, self.correctAnswer, self.points, self.liczba_pytan, popr_odp)
@@ -574,10 +587,27 @@ class AnswerWindow(QtWidgets.QWidget):
 
     def quit(self):
         self.destroy()
-        menu.quit_msg(self.points, self.liczba_pytan, self.popr_odp)
+        main.quit_msg(self.points, self.liczba_pytan, self.popr_odp)
+
+# class IntroWindow(QtWidgets.QMainWindow):
+#     def __init__(self):
+#         super().__init__()
+#         #pix_intro = QPixmap()
+#         loader = QUiLoader()
+#         self.window = loader.load(r'GUI\intro.ui', self)
+#         #self.window.intro.setPixmap(pix_intro)
+#         self.window.pushButton.clicked.connect(self._start)
+
+#         self.window.show()
+
+#     def _start(self):
+#         menu = MenuWidget()
+#         menu.show()
+        
 
 if __name__=='__main__':
     app=QtWidgets.QApplication([])
     app.setQuitOnLastWindowClosed(False)
-    menu = MenuWidget()
+    main = MenuWidget()
+    
     sys.exit(app.exec()) 
