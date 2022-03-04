@@ -4,7 +4,7 @@ from googletrans import Translator
 from PySide6.QtGui import QFont, QPixmap, QIcon
 from PySide6 import QtWidgets
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import Slot, QSize, Qt
+from PySide6.QtCore import QSize, Qt
 import speech_recognition as sr     #głos na tekst
 import pyttsx3 as tts               #tekst na głos
 
@@ -21,6 +21,7 @@ class MenuWidget(QtWidgets.QMainWindow):
         loader = QUiLoader()
         self.window = loader.load("GUI/menu.ui", self)
 
+
         # tworzenie obiektów grafiki
         self.pix_ang = QPixmap(r'img\united_kingdom_round_icon_64.png')
         self.pix_pol = QPixmap(r'img\poland_round_icon_64.png')
@@ -28,7 +29,10 @@ class MenuWidget(QtWidgets.QMainWindow):
 
         # ładowanie pliku temp do okna aplikacji i aktualizacja okienka statystka
         self._aktualizacja_statystyki()
-        if self.wizyta != 'DZISIAJ': self._informuj_przez_mail(f'Luiza uruchomila Angielke. \nPunkty: {self.temp["main_points"]} \nSprawnosc: {self.sprawnosc}% \nOstatnia wizyta: {self.wizyta}')
+        try:
+            if self.wizyta != 'DZISIAJ': self._informuj_przez_mail(f'Luiza uruchomila Angielke. \nPunkty: {self.temp["main_points"]} \nSprawnosc: {self.sprawnosc}% \nOstatnia wizyta: {self.wizyta}')
+        except:
+            self.error_msg('brak połączenia z internetem')
         self._wybierz_jezyk()
         
         # przypisanie akcji do przycisków
@@ -37,8 +41,8 @@ class MenuWidget(QtWidgets.QMainWindow):
         self.window.jezykBtn.clicked.connect(self._wybierz_jezyk)
         self.window.startBtn.clicked.connect(self._start)
         self.window.tlumaczBtn.clicked.connect(self._translator)
-           
-        # uruchomienie okna
+        
+    def start(self):
         self.window.show()
 
     def _aktualizacja_statystyki(self):
@@ -88,7 +92,6 @@ class MenuWidget(QtWidgets.QMainWindow):
         else:
             return 0
 
-    @Slot()
     def _wybierz_jezyk(self):
         if self.wybor == 'pl':
             self.wybor = ''
@@ -99,7 +102,6 @@ class MenuWidget(QtWidgets.QMainWindow):
             self.window.jezykZ.setPixmap(self.pix_ang)
             self.window.jezykNa.setPixmap(self.pix_pol)
     
-    @Slot()
     def _translator(self):
         if self.wybor == 'pl':
             wybor = 'pl'
@@ -202,7 +204,6 @@ class MenuWidget(QtWidgets.QMainWindow):
         msg.setText(f'Coś poszło nie tak: {text}')
         msg.exec()
 
-    @Slot()
     def _start(self):
         self.liczba_pytan = self.window.liczbaPytan.value()
         self.words = self.tasowanie_pytan()
@@ -282,7 +283,6 @@ class TalkWidget(QtWidgets.QMainWindow):
         self.window.word_label.setText(self.quest[i])
         self.window.repaint()
         
-    @Slot()
     def _asking(self):
         frazy = self._pobieranie_fraz(PATHS)
         popr_odp = 0
@@ -430,8 +430,7 @@ class TranslateWidget(QtWidgets.QWidget): # tłumaczenie słów przy pomocy goog
 
         loader = QUiLoader()
         self.window = loader.load("GUI/translator.ui", self)
-        self.window.setWindowTitle("Angielka - Tłumaczenie")
-        
+                
         if self.wybor == 'en':
             self.window.name_to_translate.setPixmap(self.pix_pol)
             self.window.name_translated.setPixmap(self.pix_ang)
@@ -443,9 +442,7 @@ class TranslateWidget(QtWidgets.QWidget): # tłumaczenie słów przy pomocy goog
         self.window.zmienBtn.setIcon(QIcon(pix_transfer))
         self.window.zmienBtn.setIconSize(QSize(48, 48))
         self.window.zmienBtn.clicked.connect(self._zmien_jezyk)        
-        self.window.show()
-
-    @Slot()
+        
     def _zmien_jezyk(self):
         if self.wybor == 'pl':
             self.window.name_to_translate.setPixmap(self.pix_pol)
@@ -456,7 +453,6 @@ class TranslateWidget(QtWidgets.QWidget): # tłumaczenie słów przy pomocy goog
             self.window.name_translated.setPixmap(self.pix_pol)   
             self.wybor = 'pl' 
 
-    @Slot()
     def _translate_word(self):
         word = self.window.entry_to_translate.text()
         try:
@@ -607,27 +603,31 @@ class AnswerWindow(QtWidgets.QWidget):
         self.destroy()
         main.quit_msg(self.points, self.liczba_pytan, self.popr_odp)
 
-# TODO uruchomić okno powitalne - Intro
+class IntroWindow(QtWidgets.QMainWindow):
+    
+    def __init__(self):
+        super().__init__()
+        pix_intro = QPixmap(r'img\intro.png')
+        loader = QUiLoader()
+        self.window = loader.load(r'GUI\intro.ui', self)
+        self.window.intro.setPixmap(pix_intro)
+        self.window.pushButton.clicked.connect(self._start)
+        self.setWindowTitle("Angielka")
+        self._podaj_liczbe_slow()
 
-# class IntroWindow(QtWidgets.QMainWindow):
-#     def __init__(self):
-#         super().__init__()
-#         #pix_intro = QPixmap()
-#         loader = QUiLoader()
-#         self.window = loader.load(r'GUI\intro.ui', self)
-#         #self.window.intro.setPixmap(pix_intro)
-#         self.window.pushButton.clicked.connect(self._start)
-
-#         self.window.show()
-
-#     def _start(self):
-#         menu = MenuWidget()
-#         menu.show()
+    def _podaj_liczbe_slow(self):
+        with open("slownik.json", 'r') as json_file:
+            slownik = json.load(json_file)
+        self.window.label_slownik.setText(f'Ze mną nauczysz się {len(slownik)} słówek')
+       
+    def _start(self):
+        main.start()
+        self.destroy()
         
-
 if __name__=='__main__':
     app=QtWidgets.QApplication([])
     app.setQuitOnLastWindowClosed(False)
     main = MenuWidget()
-    
+    intro = IntroWindow()
+    intro.show()
     sys.exit(app.exec()) 

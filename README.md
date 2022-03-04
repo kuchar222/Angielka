@@ -13,8 +13,9 @@ Najbliższe cele do wykonania:
     - zapisać w osobnym pliku w formacie .ui    ZROBIONE
     - dodać możliwość wyboru kierunku tłumaczenia  ZROBIONE
 4. Dodać opcje sprawdzania czy użytkownik nie używa za dużo z jednego trybu (powyżej 80%)   ZROBIONE
-5. Dadać grafikę (flagi) przy wyborze jezyka
+5. Dodać grafikę (flagi) przy wyborze jezyka
     - w oknie głównym               ZROBIONE
     - w oknie tłumacza              ZROBIONE
-6. Opracować okno powitalne (intro)
+6. Opracować okno powitalne (intro) ZROBIONE
+7. Dodać funkcjonalność wysyłania info poprzez mail     ZROBIONE
 
